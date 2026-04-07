@@ -135,7 +135,8 @@ reBotArm_control_py/
 │   │   └── 6_ik_test.py            # 逆運動学
 │   ├── 実機制御/
 │   │   ├── 7_arm_ik_control.py     # IK リアルタイム制御
-│   │   └── 8_arm_traj_control.py   # 軌道計画
+│   │   ├── 8_arm_traj_control.py   # 軌道計画
+│   │   └── 9_gravity_compensation.py  # 重力補償
 │   └── sim/                    # シミュレーションツール
 ├── reBotArm_control_py/        # コアライブラリ
 │   ├── actuator/               # アクチュエータモジュール
@@ -263,6 +264,18 @@ uv run python example/6_ik_test.py
 
 ### 実機制御
 
+:::tip 権限設定
+実機制御サンプルを実行する前に、デバイスの権限を設定する必要があります：
+
+```bash
+# シリアルデバイスの権限を設定（達妙 USB2CAN）
+sudo chmod 666 /dev/ttyACM0
+
+# または CAN インターフェース（例：can0）
+sudo chmod 666 /dev/can0
+```
+:::
+
 #### 7️⃣ IK リアルタイム制御 (`7_arm_ik_control.py`)
 
 IK ソルバーに基づくロボットアームリアルタイムエンドエフェクタ制御。
@@ -306,67 +319,30 @@ uv run python example/8_arm_traj_control.py
 
 ---
 
-## 📚 コアモジュール API
+#### 9️⃣ 重力補償制御 (`9_gravity_compensation.py`)
 
-### RobotArm メイン制御クラス
+Pinocchio 动力学モデルを使用して関節の重力を補償します。
 
-```python
-from reBotArm_control_py.actuator import RobotArm
-import numpy as np
-
-arm = RobotArm("config/robot.yaml")
-arm.connect()
-arm.enable()
-arm.set_zero()
-
-# MIT モード
-arm.mode_mit()
-arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
-
-# POS_VEL モード
-arm.mode_pos_vel()
-arm.pos_vel(pos=np.zeros(6))
-
-arm.disconnect()
+**制御則**：
+```
+tau = g(q)          — 重力フォワード
+pos = 現在のモーター位置 — 関節位置は現在位置に従う
+kp = 2,  kd = 1     — すべての関節で統一された剛性/ダンピング
 ```
 
-### 運動学モジュール
+**期待される動作**：
+- ロボットアームは任意の姿勢で「浮遊」できます
+- 離しても自重で落下しません
+- 任意の位置に手で動かすことができます
 
-```python
-from reBotArm_control_py.kinematics import (
-    load_robot_model,
-    compute_fk,
-    compute_ik,
-)
-
-# 順運動学
-model = load_robot_model()
-position, rotation, homogeneous = compute_fk(model, q)
-
-# 逆運動学
-result = compute_ik(
-    q_init=np.zeros(6),
-    target_pos=np.array([0.3, 0.0, 0.2]),
-)
+**使用方法**：
+```bash
+uv run python example/9_gravity_compensation.py
 ```
 
-### 高度コントローラー
-
-```python
-from reBotArm_control_py.controllers import ArmIK, ArmTraj
-
-# IK コントローラー
-arm_ik = ArmIK(arm)
-arm_ik.start()
-arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
-arm_ik.end()
-
-# 軌道コントローラー
-arm_traj = ArmTraj(arm)
-arm_traj.start()
-arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
-arm_traj.end()
-```
+**出力**：
+- 各関節の期待トルクをリアルタイム表示（N·m）
+- `Ctrl+C` で停止して接続を切断
 
 ---
 

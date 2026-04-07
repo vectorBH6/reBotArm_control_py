@@ -135,7 +135,8 @@ reBotArm_control_py/
 │   │   └── 6_ik_test.py            # Inverse kinematics
 │   ├── Real Machine Control/
 │   │   ├── 7_arm_ik_control.py     # IK real-time control
-│   │   └── 8_arm_traj_control.py   # Trajectory planning
+│   │   ├── 8_arm_traj_control.py   # Trajectory planning
+│   │   └── 9_gravity_compensation.py  # Gravity compensation
 │   └── sim/                    # Simulation tools
 ├── reBotArm_control_py/        # Core library
 │   ├── actuator/               # Actuator module
@@ -263,6 +264,18 @@ uv run python example/6_ik_test.py
 
 ### Real Machine Control
 
+:::tip Permission Setup
+Before running real machine control examples, you need to set device permissions:
+
+```bash
+# Set serial device permission (Damiao USB2CAN)
+sudo chmod 666 /dev/ttyACM0
+
+# Or for CAN interface (e.g., can0)
+sudo chmod 666 /dev/can0
+```
+:::
+
 #### 7️⃣ IK Real-time Control (`7_arm_ik_control.py`)
 
 Real-time end-effector control based on IK solver.
@@ -306,67 +319,30 @@ uv run python example/8_arm_traj_control.py
 
 ---
 
-## 📚 Core Module API
+#### 9️⃣ Gravity Compensation Control (`9_gravity_compensation.py`)
 
-### RobotArm Main Control Class
+Compensates for joint gravity using Pinocchio dynamics model.
 
-```python
-from reBotArm_control_py.actuator import RobotArm
-import numpy as np
-
-arm = RobotArm("config/robot.yaml")
-arm.connect()
-arm.enable()
-arm.set_zero()
-
-# MIT Mode
-arm.mode_mit()
-arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
-
-# POS_VEL Mode
-arm.mode_pos_vel()
-arm.pos_vel(pos=np.zeros(6))
-
-arm.disconnect()
+**Control Law**:
+```
+tau = g(q)          — Gravity feedforward
+pos = current motor position  — Joint position follows current position
+kp = 2,  kd = 1     — Unified stiffness/damping for all motors
 ```
 
-### Kinematics Module
+**Expected Behavior**:
+- The robotic arm can "float" in any posture
+- Won't fall due to its own weight when released
+- Can be manually moved to any position
 
-```python
-from reBotArm_control_py.kinematics import (
-    load_robot_model,
-    compute_fk,
-    compute_ik,
-)
-
-# Forward Kinematics
-model = load_robot_model()
-position, rotation, homogeneous = compute_fk(model, q)
-
-# Inverse Kinematics
-result = compute_ik(
-    q_init=np.zeros(6),
-    target_pos=np.array([0.3, 0.0, 0.2]),
-)
+**Usage**:
+```bash
+uv run python example/9_gravity_compensation.py
 ```
 
-### Advanced Controllers
-
-```python
-from reBotArm_control_py.controllers import ArmIK, ArmTraj
-
-# IK Controller
-arm_ik = ArmIK(arm)
-arm_ik.start()
-arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
-arm_ik.end()
-
-# Trajectory Controller
-arm_traj = ArmTraj(arm)
-arm_traj.start()
-arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
-arm_traj.end()
-```
+**Output**:
+- Real-time display of expected torque for each joint (N·m)
+- Press `Ctrl+C` to stop and disconnect
 
 ---
 

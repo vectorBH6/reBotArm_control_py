@@ -135,7 +135,8 @@ reBotArm_control_py/
 │   │   └── 6_ik_test.py            # Cinemática inversa
 │   ├── Control Real/
 │   │   ├── 7_arm_ik_control.py     # Control IK tiempo real
-│   │   └── 8_arm_traj_control.py   # Planificación de trayectoria
+│   │   ├── 8_arm_traj_control.py   # Planificación de trayectoria
+│   │   └── 9_gravity_compensation.py  # Compensación de gravedad
 │   └── sim/                    # Herramientas de simulación
 ├── reBotArm_control_py/        # Biblioteca principal
 │   ├── actuator/               # Módulo de actuador
@@ -263,6 +264,18 @@ uv run python example/6_ik_test.py
 
 ### Control Real
 
+:::tip Configuración de Permisos
+Antes de ejecutar los ejemplos de control real, necesita configurar los permisos del dispositivo:
+
+```bash
+# Establecer permiso del dispositivo serie (Damiao USB2CAN)
+sudo chmod 666 /dev/ttyACM0
+
+# O para la interfaz CAN (por ejemplo can0)
+sudo chmod 666 /dev/can0
+```
+:::
+
 #### 7️⃣ Control IK en Tiempo Real (`7_arm_ik_control.py`)
 
 Control en tiempo real del efector basado en el solucionador IK.
@@ -306,67 +319,30 @@ uv run python example/8_arm_traj_control.py
 
 ---
 
-## 📚 API de Módulos Principales
+#### 9️⃣ Control de Compensación de Gravedad (`9_gravity_compensation.py`)
 
-### Clase de Control Principal RobotArm
+Compensa la gravedad de las articulaciones usando el modelo dinámico Pinocchio.
 
-```python
-from reBotArm_control_py.actuator import RobotArm
-import numpy as np
-
-arm = RobotArm("config/robot.yaml")
-arm.connect()
-arm.enable()
-arm.set_zero()
-
-# Modo MIT
-arm.mode_mit()
-arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
-
-# Modo POS_VEL
-arm.mode_pos_vel()
-arm.pos_vel(pos=np.zeros(6))
-
-arm.disconnect()
+**Ley de Control**:
+```
+tau = g(q)          — Compensación de gravedad
+pos = posición actual del motor  — La posición sigue la posición actual
+kp = 2,  kd = 1     — Rigidez/amortiguación unificadas para todos los motores
 ```
 
-### Módulo de Cinemática
+**Comportamiento Esperado**:
+- El brazo robótico puede "flotar" en cualquier postura
+- No se cae por su propio peso cuando se suelta
+- Se puede mover manualmente a cualquier posición
 
-```python
-from reBotArm_control_py.kinematics import (
-    load_robot_model,
-    compute_fk,
-    compute_ik,
-)
-
-# Cinemática Directa
-model = load_robot_model()
-position, rotation, homogeneous = compute_fk(model, q)
-
-# Cinemática Inversa
-result = compute_ik(
-    q_init=np.zeros(6),
-    target_pos=np.array([0.3, 0.0, 0.2]),
-)
+**Uso**:
+```bash
+uv run python example/9_gravity_compensation.py
 ```
 
-### Controladores Avanzados
-
-```python
-from reBotArm_control_py.controllers import ArmIK, ArmTraj
-
-# Controlador IK
-arm_ik = ArmIK(arm)
-arm_ik.start()
-arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
-arm_ik.end()
-
-# Controlador de Trayectoria
-arm_traj = ArmTraj(arm)
-arm_traj.start()
-arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
-arm_traj.end()
-```
+**Salida**:
+- Visualización en tiempo real del par esperado para cada articulación (N·m)
+- Presione `Ctrl+C` para detener y desconectar
 
 ---
 

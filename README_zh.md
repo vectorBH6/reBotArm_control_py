@@ -125,7 +125,8 @@ reBotArm_control_py/
 │   │   └── 6_ik_test.py            # 逆运动学
 │   ├── 实机控制/
 │   │   ├── 7_arm_ik_control.py     # IK 实时控制
-│   │   └── 8_arm_traj_control.py   # 轨迹规划
+│   │   ├── 8_arm_traj_control.py   # 轨迹规划
+│   │   └── 9_gravity_compensation.py  # 重力补偿
 │   └── sim/                    # 仿真工具
 ├── reBotArm_control_py/        # 核心库
 │   ├── actuator/               # 执行器模块
@@ -253,6 +254,18 @@ uv run python example/6_ik_test.py
 
 ### 实机控制
 
+:::tip 权限设置
+运行实机控制示例前，需要设置设备权限：
+
+```bash
+# 设置串口设备权限（达秒 USB2CAN）
+sudo chmod 666 /dev/ttyACM0
+
+# 或使用 CAN 接口（如 can0）
+sudo chmod 666 /dev/can0
+```
+:::
+
 #### 7️⃣ IK 实时控制 (`7_arm_ik_control.py`)
 
 基于 IK 解算的机械臂实时末端控制。
@@ -296,67 +309,30 @@ uv run python example/8_arm_traj_control.py
 
 ---
 
-## 📚 核心模块 API
+#### 9️⃣ 重力补偿控制 (`9_gravity_compensation.py`)
 
-### RobotArm 主控制类
+使用 Pinocchio 动力学模型补偿关节重力。
 
-```python
-from reBotArm_control_py.actuator import RobotArm
-import numpy as np
-
-arm = RobotArm("config/robot.yaml")
-arm.connect()
-arm.enable()
-arm.set_zero()
-
-# MIT 模式
-arm.mode_mit()
-arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
-
-# POS_VEL 模式
-arm.mode_pos_vel()
-arm.pos_vel(pos=np.zeros(6))
-
-arm.disconnect()
+**控制律**：
+```
+tau = g(q)          — 重力前馈
+pos = 当前电机位置   — 关节位置跟随当前位置
+kp = 2,  kd = 1     — 所有关节统一刚度/阻尼
 ```
 
-### 运动学模块
+**预期行为**：
+- 机械臂可以在任意姿态下"漂浮"
+- 松开后不会因自重坠落
+- 可以手动掰动到任意位置
 
-```python
-from reBotArm_control_py.kinematics import (
-    load_robot_model,
-    compute_fk,
-    compute_ik,
-)
-
-# 正运动学
-model = load_robot_model()
-position, rotation, homogeneous = compute_fk(model, q)
-
-# 逆运动学
-result = compute_ik(
-    q_init=np.zeros(6),
-    target_pos=np.array([0.3, 0.0, 0.2]),
-)
+**运行方式**：
+```bash
+uv run python example/9_gravity_compensation.py
 ```
 
-### 高级控制器
-
-```python
-from reBotArm_control_py.controllers import ArmIK, ArmTraj
-
-# IK 控制器
-arm_ik = ArmIK(arm)
-arm_ik.start()
-arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
-arm_ik.end()
-
-# 轨迹控制器
-arm_traj = ArmTraj(arm)
-arm_traj.start()
-arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
-arm_traj.end()
-```
+**输出**：
+- 实时显示各关节期望力矩（N·m）
+- 按 `Ctrl+C` 停止并断开连接
 
 ---
 
