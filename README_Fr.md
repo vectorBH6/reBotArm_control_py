@@ -1,0 +1,411 @@
+# 🦾 reBotArm Control : Bibliothèque de Contrôle de Bras Robotique Python
+
+<p align="center">
+    <a href="./LICENSE">
+        <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
+    </a>
+    <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Version Python">
+    <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu-orange.svg" alt="Plateforme">
+    <img src="https://img.shields.io/badge/Framework-Pinocchio-yellow.svg" alt="Pinocchio">
+</p>
+
+<p align="center">
+  <strong>Bras Robotique 6-DOF · Support Multi-Moteurs · Solveur Cinématique · Planification de Trajectoire · Entièrement Open Source</strong>
+</p>
+
+<p align="center">
+  <strong>
+    <a href="./README_zh.md">简体中文</a> &nbsp;|&nbsp;
+    <a href="./README.md">English</a> &nbsp;|&nbsp;
+    <a href="./README_JP.md">日本語</a>&nbsp;|&nbsp;
+    <a href="./README_Fr.md">français</a>&nbsp;|&nbsp;
+    <a href="./README_es.md">Español</a>
+  </strong>
+</p>
+
+---
+
+## 📖 Introduction
+
+**reBotArm Control** est une bibliothèque de contrôle Python pour le bras robotique reBot Arm B601, fournissant une solution complète du contrôle des moteurs de bas niveau au calcul cinématique de haut niveau.
+
+### ✨ Fonctionnalités Principales
+
+- 🦾 **Support Multi-Moteurs** — Damiao, MyActuator, RobStride, trois marques de moteurs
+- 🎯 **Trois Modes de Contrôle** — MIT, POS_VEL, VEL pour différents scénarios d'application
+- 🧮 **Solveur Cinématique** — Cinématique directe/inverse basée sur Pinocchio
+- 🛤️ **Planification de Trajectoire** — Trajectoire géodésique SE(3) + suivi CLIK
+- 🔧 **Configuration Flexible** — Fichier de configuration YAML pour une adaptation rapide du matériel
+
+---
+
+## ⚙️ Démarrage Rapide
+
+### Configuration Requise
+
+| Élément | Configuration Requise |
+|---------|----------------------|
+| **Python** | 3.10+ |
+| **Système d'Exploitation** | Ubuntu 22.04+ |
+| **Interface de Communication** | Pont série USB2CAN ou Interface CAN |
+
+### Étapes d'Installation
+
+#### Étape 1. Installer uv (si non installé)
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+#### Étape 2. Synchroniser l'Environnement (Installer Toutes les Dépendances)
+
+```bash
+uv sync
+```
+
+:::tip
+`uv sync` créera automatiquement un environnement virtuel (s'il n'existe pas) et installera toutes les dépendances selon `pyproject.toml` et `uv.lock`.
+:::
+
+---
+
+## 🔌 Configuration Matérielle
+
+### Par Défaut : Pont Série Damiao USB2CAN
+
+Le reBot Arm B601-DM utilise par défaut le module de pont série Damiao USB2CAN.
+
+**Connexion Matérielle** :
+1. Connectez le module USB2CAN à votre ordinateur via un câble USB
+2. Le système le reconnaîtra automatiquement comme périphérique `/dev/ttyACM0`
+
+**Vérification de la Configuration** :
+```bash
+# Vérifier le périphérique
+ls /dev/ttyACM0
+
+# Scanner les moteurs
+motorbridge-cli scan --vendor damiao --transport dm-serial \
+    --serial-port /dev/ttyACM0 --serial-baud 921600
+```
+
+### Optionnel : Interface CAN Standard
+
+Utilisation d'autres adaptateurs USB-CAN (CANable, PCAN, etc.) :
+
+```bash
+# Démarrer l'interface CAN
+sudo ip link set can0 up type can bitrate 500000
+
+# Vérifier l'interface
+ip -details link show can0
+```
+
+### Configuration des Marques de Moteurs
+
+| Marque de Moteur | Transmission | Configuration | Baud Rate |
+|-----------------|--------------|---------------|-----------|
+| **达秒 (Damiao)** | Pont Série | `dm-serial` | 921600 |
+| **达秒 (Damiao)** | Interface CAN | `socketcan` | 500000 |
+| **MyActuator** | Interface CAN | `socketcan` | 500000 |
+| **RobStride** | Interface CAN | `socketcan` | 500000 |
+
+:::tip
+- Pour les moteurs Damiao utilisant le pont série, devez définir `--transport dm-serial`
+- Règle d'ID de feedback : `feedback_id = motor_id + 0x10`
+:::
+
+---
+
+## 📁 Structure du Projet
+
+```
+reBotArm_control_py/
+├── config/                     # Fichiers de configuration
+│   └── robot.yaml              # Configuration des paramètres des articulations
+├── example/                    # Programmes d'exemple
+│   ├── Outils de Débogage/
+│   │   ├── 0x01damiao_text.py      # Console mono-moteur
+│   │   └── 2_zero_and_read.py      # Calibration zéro
+│   ├── Contrôle de Position/
+│   │   ├── 3_mit_control.py        # Contrôle MIT
+│   │   └── 4_pos_vel_control.py    # Contrôle POS_VEL
+│   ├── Tests Cinématiques/
+│   │   ├── 5_fk_test.py            # Cinématique directe
+│   │   └── 6_ik_test.py            # Cinématique inverse
+│   ├── Contrôle Réel/
+│   │   ├── 7_arm_ik_control.py     # Contrôle IK temps réel
+│   │   └── 8_arm_traj_control.py   # Planification de trajectoire
+│   └── sim/                    # Outils de simulation
+├── reBotArm_control_py/        # Bibliothèque principale
+│   ├── actuator/               # Module d'actionneur
+│   ├── kinematics/             # Module de cinématique
+│   ├── controllers/            # Module de contrôleur
+│   └── trajectory/             # Module de planification de trajectoire
+├── urdf/                       # Modèle URDF
+└── README.md
+```
+
+---
+
+## 🎮 Programmes d'Exemple
+
+### Outils de Débogage
+
+#### 1️⃣ Console Mono-Moteur (`0x01damiao_text.py`)
+
+Test direct d'un seul moteur avec le SDK motorbridge, supporte trois modes de contrôle.
+
+**Utilisation** :
+```bash
+uv run python example/0x01damiao_text.py
+```
+
+**Commandes Interactives** :
+| Commande | Description |
+|---------|-------------|
+| `mit <pos_deg> [vel kp kd tau]` | Mode MIT |
+| `posvel <pos_deg> [vlim]` | Mode POS_VEL |
+| `vel <vel_rad_s>` | Mode Vitesse |
+| `enable` / `disable` | Activer/Désactiver |
+| `set_zero` | Définir la position zéro |
+| `state` | Voir l'état |
+
+---
+
+#### 2️⃣ Calibration Zéro et Surveillance d'Angle (`2_zero_and_read.py`)
+
+Définit automatiquement les zéros de toutes les articulations et affiche les angles en temps réel.
+
+**Utilisation** :
+```bash
+uv run python example/2_zero_and_read.py
+```
+
+---
+
+### Contrôle de Position
+
+#### 3️⃣ Contrôle Spring-Damper MIT (`3_mit_control.py`)
+
+Contrôle de position multi-articulations en mode MIT avec ajustement PID en temps réel.
+
+**Format d'Entrée** :
+```
+<joint1_deg> <joint2_deg> ... <jointN_deg> [kp] [kd]
+```
+
+**Exemple** :
+```bash
+uv run python example/3_mit_control.py
+> 0 0 0 0 0 0          # Toutes les articulations à zéro
+> 10 -20 30 -40 50 60  # Définir des angles spécifiques
+> state                # Voir l'état
+> q                    # Quitter
+```
+
+---
+
+#### 4️⃣ Contrôle Position-Vitesse POS_VEL (`4_pos_vel_control.py`)
+
+Contrôle PI à double boucle position-vitesse.
+
+**Format d'Entrée** :
+```
+<joint1_deg> <joint2_deg> ... <jointN_deg> [vlim]
+```
+
+**Utilisation** :
+```bash
+uv run python example/4_pos_vel_control.py
+```
+
+---
+
+### Tests Cinématiques
+
+#### 5️⃣ Test de Cinématique Directe (`5_fk_test.py`)
+
+Calcule la pose de l'effecteur terminal à partir des angles des articulations.
+
+**Entrée** : 6 angles d'articulation (degrés)
+
+**Sortie** :
+- Position de l'effecteur (X, Y, Z) — Unité : mètres
+- Matrice de rotation (3×3)
+- Angles d'Euler (Roulis/Tangage/Lacet) — Unité : degrés
+
+**Exemple** :
+```bash
+uv run python example/5_fk_test.py
+> 0 0 0 0 0 0
+> 45 -30 15 -60 90 180
+```
+
+---
+
+#### 6️⃣ Test de Cinématique Inverse (`6_ik_test.py`)
+
+Résout les angles des articulations à partir de la pose désirée de l'effecteur.
+
+**Format d'Entrée** :
+- Position uniquement : `<x> <y> <z>` (mètres)
+- Position + Orientation : `<x> <y> <z> <roll> <pitch> <yaw>` (degrés)
+
+**Exemple** :
+```bash
+uv run python example/6_ik_test.py
+> 0.25 0.0 0.15              # Position uniquement
+> 0.25 0.0 0.15 0 0 0        # Position + Orientation
+```
+
+---
+
+### Contrôle Réel
+
+#### 7️⃣ Contrôle IK en Temps Réel (`7_arm_ik_control.py`)
+
+Contrôle en temps réel de l'effecteur basé sur le solveur IK.
+
+**Commandes Interactives** :
+| Commande | Description |
+|---------|-------------|
+| `x y z [roll pitch yaw]` | Pose cible de l'effecteur |
+| `state` | Voir l'état actuel/cible |
+| `pos` | Position actuelle de l'effecteur |
+| `q/quit/exit` | Quitter |
+
+**Utilisation** :
+```bash
+uv run python example/7_arm_ik_control.py
+> 0.3 0.0 0.2
+> 0.3 0.1 0.25 0 0.5 0
+```
+
+---
+
+#### 8️⃣ Contrôle de Planification de Trajectoire (`8_arm_traj_control.py`)
+
+Planification de trajectoire géodésique SE(3) + suivi CLIK.
+
+**Format d'Entrée** :
+```
+x y z [roll pitch yaw] [duration]
+```
+
+**Paramètres** :
+- `x, y, z`: Position cible (mètres)
+- `roll, pitch, yaw`: Orientation cible (radians)
+- `duration`: Durée du mouvement (secondes), défaut 2.0s
+
+**Utilisation** :
+```bash
+uv run python example/8_arm_traj_control.py
+> 0.3 0.0 0.3 0 0.4 0 2.0
+```
+
+---
+
+## 📚 API des Modules Principaux
+
+### Classe de Contrôle Principale RobotArm
+
+```python
+from reBotArm_control_py.actuator import RobotArm
+import numpy as np
+
+arm = RobotArm("config/robot.yaml")
+arm.connect()
+arm.enable()
+arm.set_zero()
+
+# Mode MIT
+arm.mode_mit()
+arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
+
+# Mode POS_VEL
+arm.mode_pos_vel()
+arm.pos_vel(pos=np.zeros(6))
+
+arm.disconnect()
+```
+
+### Module de Cinématique
+
+```python
+from reBotArm_control_py.kinematics import (
+    load_robot_model,
+    compute_fk,
+    compute_ik,
+)
+
+# Cinématique Directe
+model = load_robot_model()
+position, rotation, homogeneous = compute_fk(model, q)
+
+# Cinématique Inverse
+result = compute_ik(
+    q_init=np.zeros(6),
+    target_pos=np.array([0.3, 0.0, 0.2]),
+)
+```
+
+### Contrôleurs Avancés
+
+```python
+from reBotArm_control_py.controllers import ArmIK, ArmTraj
+
+# Contrôleur IK
+arm_ik = ArmIK(arm)
+arm_ik.start()
+arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
+arm_ik.end()
+
+# Contrôleur de Trajectoire
+arm_traj = ArmTraj(arm)
+arm_traj.start()
+arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
+arm_traj.end()
+```
+
+---
+
+## 🎯 Comparaison des Modes de Contrôle
+
+| Mode | Principe | Application |
+|------|----------|-------------|
+| **MIT** | Couple = kp×pos_err + kd×vel_err | Contrôle compliant, contrôle d'impédance |
+| **POS_VEL** | Boucle de position PI + boucle de vitesse PI | Contrôle de position précis |
+| **VEL** | Commande de vitesse directe | Applications en mode vitesse |
+
+---
+
+## 🙌 Références et Remerciements
+
+### Support Écosystème et Logiciel
+*   **[Pinocchio](https://stack-of-tasks.github.io/pinocchio/)** — Bibliothèque de dynamique des corps rigides
+*   **[motorbridge](https://github.com/damiao-robot/motorbridge)** — SDK moteur
+
+### Partenaires Matériels Principaux
+*   **[Damiao Technology](https://www.damiaokeji.com/)**
+*   **[MyActuator](https://myactuator.com/)**
+*   **[RobStride](https://robstride.com/)**
+
+---
+
+## 📄 Licence
+
+Ce projet est open source sous la **Licence MIT**.
+
+---
+
+## ☎ Nous Contacter
+
+- **Support Technique** : [Soumettre un Issue](https://github.com/vectorBH6/reBotArm_control_py/issues)
+- **Dépôt** : [GitHub](https://github.com/vectorBH6/reBotArm_control_py)
+
+---
+
+<p align="center">
+  <strong>🌟 Si ce projet vous est utile, veuillez nous donner une Star !</strong>
+</p>

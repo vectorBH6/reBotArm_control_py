@@ -1,0 +1,401 @@
+# 🦾 reBotArm Control: Python 机械臂控制库
+
+<p align="center">
+    <a href="./LICENSE">
+        <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
+    </a>
+    <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python Version">
+    <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu-orange.svg" alt="Platform">
+    <img src="https://img.shields.io/badge/Framework-Pinocchio-yellow.svg" alt="Pinocchio">
+</p>
+
+<p align="center">
+  <strong>6 自由度机械臂 · 多电机支持 · 运动学求解 · 轨迹规划 · 完全开源</strong>
+</p>
+
+---
+
+## 📖 项目简介
+
+**reBotArm Control** 是一个面向 reBot Arm B601 机械臂的 Python 控制库，提供从底层电机控制到上层运动学解算的完整解决方案。
+
+### ✨ 核心特性
+
+- 🦾 **多电机支持** — Damiao、MyActuator、RobStride 三种电机品牌
+- 🎯 **三种控制模式** — MIT、POS_VEL、VEL，满足不同应用场景
+- 🧮 **运动学求解** — 基于 Pinocchio 的正/逆运动学计算
+- 🛤️ **轨迹规划** — SE(3) 测地线轨迹 + CLIK 跟踪
+- 🔧 **灵活配置** — YAML 配置文件，快速适配不同硬件
+
+---
+
+## ⚙️ 快速开始
+
+### 环境要求
+
+| 项目 | 要求 |
+|------|------|
+| **Python** | 3.10+ |
+| **操作系统** | Ubuntu 22.04+ |
+| **通信接口** | USB2CAN 串口桥 或 CAN 接口 |
+
+### 安装步骤
+
+#### 步骤 1. 安装 uv（如未安装）
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+#### 步骤 2. 同步环境（安装所有依赖）
+
+```bash
+uv sync
+```
+
+:::tip
+`uv sync` 会自动创建虚拟环境（如不存在）并根据 `pyproject.toml` 和 `uv.lock` 安装所有依赖。
+:::
+
+---
+
+## 🔌 硬件配置
+
+### 默认配置：达秒 USB2CAN 串口桥
+
+reBot Arm B601-DM 默认使用达秒 USB2CAN 串口桥模块。
+
+**硬件连接**：
+1. 将 USB2CAN 模块通过 USB 线连接到计算机
+2. 系统会自动识别为 `/dev/ttyACM0` 设备
+
+**配置验证**：
+```bash
+# 检查设备
+ls /dev/ttyACM0
+
+# 扫描电机
+motorbridge-cli scan --vendor damiao --transport dm-serial \
+    --serial-port /dev/ttyACM0 --serial-baud 921600
+```
+
+### 可选配置：标准 CAN 接口
+
+使用其他 USB-CAN 适配器（CANable、PCAN 等）：
+
+```bash
+# 启动 CAN 接口
+sudo ip link set can0 up type can bitrate 500000
+
+# 验证接口
+ip -details link show can0
+```
+
+### 不同电机品牌配置
+
+| 电机品牌 | 传输方式 | 配置参数 | 波特率 |
+|----------|---------|---------|--------|
+| **达秒 (Damiao)** | 串口桥 | `dm-serial` | 921600 |
+| **达秒 (Damiao)** | CAN 接口 | `socketcan` | 500000 |
+| **MyActuator** | CAN 接口 | `socketcan` | 500000 |
+| **RobStride** | CAN 接口 | `socketcan` | 500000 |
+
+:::tip
+- 达秒电机使用串口桥时，必须设置 `--transport dm-serial`
+- 反馈 ID 规则：`feedback_id = motor_id + 0x10`
+:::
+
+---
+
+## 📁 项目结构
+
+```
+reBotArm_control_py/
+├── config/                     # 配置文件
+│   └── robot.yaml              # 关节参数配置
+├── example/                    # 示例程序
+│   ├── 调试工具/
+│   │   ├── 0x01damiao_text.py      # 单电机控制台
+│   │   └── 2_zero_and_read.py      # 零点校准
+│   ├── 位置控制/
+│   │   ├── 3_mit_control.py        # MIT 控制
+│   │   └── 4_pos_vel_control.py    # POS_VEL 控制
+│   ├── 运动学测试/
+│   │   ├── 5_fk_test.py            # 正运动学
+│   │   └── 6_ik_test.py            # 逆运动学
+│   ├── 实机控制/
+│   │   ├── 7_arm_ik_control.py     # IK 实时控制
+│   │   └── 8_arm_traj_control.py   # 轨迹规划
+│   └── sim/                    # 仿真工具
+├── reBotArm_control_py/        # 核心库
+│   ├── actuator/               # 执行器模块
+│   ├── kinematics/             # 运动学模块
+│   ├── controllers/            # 控制器模块
+│   └── trajectory/             # 轨迹规划模块
+├── urdf/                       # URDF 模型
+└── README.md
+```
+
+---
+
+## 🎮 示例程序
+
+### 调试工具
+
+#### 1️⃣ 单电机控制台 (`0x01damiao_text.py`)
+
+直接使用 motorbridge SDK 进行单电机测试，支持三种控制模式。
+
+**运行方式**：
+```bash
+uv run python example/0x01damiao_text.py
+```
+
+**交互命令**：
+| 命令 | 说明 |
+|------|------|
+| `mit <pos_deg> [vel kp kd tau]` | MIT 模式 |
+| `posvel <pos_deg> [vlim]` | POS_VEL 模式 |
+| `vel <vel_rad_s>` | 纯速度模式 |
+| `enable` / `disable` | 使能/失能 |
+| `set_zero` | 设置零位 |
+| `state` | 查看状态 |
+
+---
+
+#### 2️⃣ 零点校准与角度监控 (`2_zero_and_read.py`)
+
+自动设置所有关节零点，实时显示关节角度。
+
+**运行方式**：
+```bash
+uv run python example/2_zero_and_read.py
+```
+
+---
+
+### 位置控制
+
+#### 3️⃣ MIT 弹簧阻尼控制 (`3_mit_control.py`)
+
+多关节 MIT 模式位置控制，支持实时调整 PID 参数。
+
+**输入格式**：
+```
+<joint1_deg> <joint2_deg> ... <jointN_deg> [kp] [kd]
+```
+
+**示例**：
+```bash
+uv run python example/3_mit_control.py
+> 0 0 0 0 0 0          # 所有关节归零
+> 10 -20 30 -40 50 60  # 设置特定角度
+> state                # 查看状态
+> q                    # 退出
+```
+
+---
+
+#### 4️⃣ POS_VEL 位置速度控制 (`4_pos_vel_control.py`)
+
+基于位置 - 速度双闭环 PI 控制。
+
+**输入格式**：
+```
+<joint1_deg> <joint2_deg> ... <jointN_deg> [vlim]
+```
+
+**运行方式**：
+```bash
+uv run python example/4_pos_vel_control.py
+```
+
+---
+
+### 运动学测试
+
+#### 5️⃣ 正运动学测试 (`5_fk_test.py`)
+
+根据关节角度计算末端位姿。
+
+**输入**：6 个关节角度（度）
+
+**输出**：
+- 末端位置 (X, Y, Z) — 单位：米
+- 旋转矩阵 (3×3)
+- 欧拉角 (横滚/俯仰/偏航) — 单位：度
+
+**示例**：
+```bash
+uv run python example/5_fk_test.py
+> 0 0 0 0 0 0
+> 45 -30 15 -60 90 180
+```
+
+---
+
+#### 6️⃣ 逆运动学测试 (`6_ik_test.py`)
+
+根据期望末端位姿求解关节角度。
+
+**输入格式**：
+- 仅位置：`<x> <y> <z>`（米）
+- 位置 + 姿态：`<x> <y> <z> <roll> <pitch> <yaw>`（度）
+
+**示例**：
+```bash
+uv run python example/6_ik_test.py
+> 0.25 0.0 0.15              # 仅位置
+> 0.25 0.0 0.15 0 0 0        # 位置 + 姿态
+```
+
+---
+
+### 实机控制
+
+#### 7️⃣ IK 实时控制 (`7_arm_ik_control.py`)
+
+基于 IK 解算的机械臂实时末端控制。
+
+**交互命令**：
+| 命令 | 说明 |
+|------|------|
+| `x y z [roll pitch yaw]` | 目标末端位姿 |
+| `state` | 查看状态 |
+| `pos` | 当前末端位置 |
+| `q/quit/exit` | 退出 |
+
+**运行方式**：
+```bash
+uv run python example/7_arm_ik_control.py
+> 0.3 0.0 0.2
+> 0.3 0.1 0.25 0 0.5 0
+```
+
+---
+
+#### 8️⃣ 轨迹规划控制 (`8_arm_traj_control.py`)
+
+SE(3) 测地线轨迹规划 + CLIK 跟踪。
+
+**输入格式**：
+```
+x y z [roll pitch yaw] [duration]
+```
+
+**参数说明**：
+- `x, y, z`: 目标位置（米）
+- `roll, pitch, yaw`: 目标姿态（弧度）
+- `duration`: 运动时长（秒），默认 2.0s
+
+**运行方式**：
+```bash
+uv run python example/8_arm_traj_control.py
+> 0.3 0.0 0.3 0 0.4 0 2.0
+```
+
+---
+
+## 📚 核心模块 API
+
+### RobotArm 主控制类
+
+```python
+from reBotArm_control_py.actuator import RobotArm
+import numpy as np
+
+arm = RobotArm("config/robot.yaml")
+arm.connect()
+arm.enable()
+arm.set_zero()
+
+# MIT 模式
+arm.mode_mit()
+arm.mit(pos=np.zeros(6), kp=np.ones(6)*100, kd=np.ones(6)*5)
+
+# POS_VEL 模式
+arm.mode_pos_vel()
+arm.pos_vel(pos=np.zeros(6))
+
+arm.disconnect()
+```
+
+### 运动学模块
+
+```python
+from reBotArm_control_py.kinematics import (
+    load_robot_model,
+    compute_fk,
+    compute_ik,
+)
+
+# 正运动学
+model = load_robot_model()
+position, rotation, homogeneous = compute_fk(model, q)
+
+# 逆运动学
+result = compute_ik(
+    q_init=np.zeros(6),
+    target_pos=np.array([0.3, 0.0, 0.2]),
+)
+```
+
+### 高级控制器
+
+```python
+from reBotArm_control_py.controllers import ArmIK, ArmTraj
+
+# IK 控制器
+arm_ik = ArmIK(arm)
+arm_ik.start()
+arm_ik.move_to_ik(x=0.3, y=0.1, z=0.4)
+arm_ik.end()
+
+# 轨迹控制器
+arm_traj = ArmTraj(arm)
+arm_traj.start()
+arm_traj.move_to_traj(x=0.3, y=0.0, z=0.3, duration=2.0)
+arm_traj.end()
+```
+
+---
+
+## 🎯 控制模式对比
+
+| 模式 | 原理 | 适用场景 |
+|------|------|----------|
+| **MIT** | 力矩 = kp×pos_err + kd×vel_err | 柔顺控制、阻抗控制 |
+| **POS_VEL** | PI 位置环 + PI 速度环 | 精确位置控制 |
+| **VEL** | 直接速度指令 | 速度模式应用 |
+
+---
+
+## 🙌 参考与致谢
+
+### 生态与软件支持
+*   **[Pinocchio](https://stack-of-tasks.github.io/pinocchio/)** — 刚体动力学库
+*   **[motorbridge](https://github.com/damiao-robot/motorbridge)** — 电机 SDK
+
+### 核心硬件伙伴
+*   **[Damiao Technology (达妙科技)](https://www.damiaokeji.com/)**
+*   **[MyActuator](https://myactuator.com/)**
+*   **[RobStride (灵足时代)](https://robstride.com/)**
+
+---
+
+## 📄 License
+
+本项目采用 **MIT 许可证** 开源。
+
+---
+
+## ☎ 联系我们
+
+- **技术支持**: [提交 Issue](https://github.com/vectorBH6/reBotArm_control_py/issues)
+- **项目仓库**: [GitHub](https://github.com/vectorBH6/reBotArm_control_py)
+
+---
+
+<p align="center">
+  <strong>🌟 如果本项目对你有帮助，请给个 Star 支持一下！</strong>
+</p>
