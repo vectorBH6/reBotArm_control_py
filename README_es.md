@@ -1,4 +1,4 @@
-# 🦾 reBotArm Control: Biblioteca de Control de Brazo Robótico Python
+# Guía de Inicio de Pinocchio y MeshCat para reBot Arm B601-DM
 
 <p align="center">
     <a href="./LICENSE">

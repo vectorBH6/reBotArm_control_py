@@ -1,4 +1,4 @@
-# 🦾 reBotArm Control: Python ロボットアーム制御ライブラリ
+# reBot Arm B601-DM の Pinocchio と MeshCat 入門ガイド
 
 <p align="center">
     <a href="./LICENSE">

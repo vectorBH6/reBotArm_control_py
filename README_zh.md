@@ -1,4 +1,4 @@
-# 🦾 reBotArm Control: Python 机械臂控制库
+# reBot Arm B601-DM 的 Pinocchio 与 MeshCat 入门指南
 
 <p align="center">
     <a href="./LICENSE">
