@@ -84,7 +84,7 @@ class RobotArm:
 
     def __init__(self, cfg_path: Optional[str] = None) -> None:
         if cfg_path is None:
-            cfg_path = Path(__file__).parent.parent.parent / "config" / "robot.yaml"
+            cfg_path = Path(__file__).parent.parent.parent / "config" / "arm.yaml"
         cfg = load_cfg(str(cfg_path))
 
         self._name = cfg["name"]

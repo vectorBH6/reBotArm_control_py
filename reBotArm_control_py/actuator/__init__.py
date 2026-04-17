@@ -4,7 +4,7 @@
 
     from reBotArm_control_py.actuator import RobotArm
 
-    arm = RobotArm("config/robot.yaml")
+    arm = RobotArm("config/arm.yaml")
     arm.connect()
     arm.disable()
     arm.set_zero()     
@@ -23,9 +23,13 @@
 """
 
 from .arm import RobotArm, JointCfg, load_cfg
+from .gripper import Gripper, GripperCfg, load_cfg as load_gripper_cfg
 
 __all__ = [
     "RobotArm",
     "JointCfg",
     "load_cfg",
+    "Gripper",
+    "GripperCfg",
+    "load_gripper_cfg",
 ]
