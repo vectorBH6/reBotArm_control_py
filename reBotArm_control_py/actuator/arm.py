@@ -724,6 +724,50 @@ class RobotArm:
                 pass
 
     # ------------------------------------------------------------------
+    # 空指令（fresh）
+    # ------------------------------------------------------------------
+
+    def fresh(self, request_feedback: bool = True) -> None:
+        """发送空指令，将所有控制量置零但不切换模式。
+
+        - MIT 模式：保持当前位置，目标速度=0，前馈力矩=0，Kp=0，Kd=0
+        - POS_VEL 模式：保持当前位置，vlim=0（速度环输出零）
+
+        	这用于在不退出使能状态的情况下安全释放电机输出，或在切换模式前
+        	重置控制状态。
+
+        Args:
+            request_feedback: 是否在发送后请求反馈。
+        """
+        mode = self._mode
+        if mode == "mit":
+            pos, _, _ = self.get_state()
+            self.mit(
+                pos,
+                vel=np.zeros(self.num_joints),
+                kp=np.zeros(self.num_joints),
+                kd=np.zeros(self.num_joints),
+                tau=np.zeros(self.num_joints),
+                request_feedback=request_feedback,
+            )
+        elif mode == "pos_vel":
+            pos, _, _ = self.get_state()
+            self.pos_vel(pos, vlim=np.zeros(self.num_joints))
+            if request_feedback:
+                for ctrl, motors in self._ctrl_to_motors().items():
+                    for mot in motors:
+                        try:
+                            mot.request_feedback()
+                        except Exception:
+                            pass
+                    try:
+                        ctrl.poll_feedback_once()
+                    except Exception:
+                        pass
+        else:
+            pass
+
+    # ------------------------------------------------------------------
     # 紧急停止
     # ------------------------------------------------------------------
 
@@ -790,3 +834,4 @@ class RobotArm:
     def __repr__(self) -> str:
         return (f"RobotArm({self._name!r}, joints={self.num_joints}, "
                 f"mode={self._mode}, rate={self._ctrl_rate}Hz)")
+                

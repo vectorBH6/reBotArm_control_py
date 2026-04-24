@@ -60,8 +60,8 @@ signal.signal(signal.SIGINT, _sigint_handler)
 _VEL_THRESHOLD = 0.04   # 末端速度阈值 (m/s)，超过才更新目标角度
 _W_VEL_THRESHOLD = 0.08   # 末端角速度阈值 (rad/s)，超过才更新目标角度
 _EE_FRAME = "end_link"
-_KP = 8.0
-_KD = 1.0
+_KP = 7.0
+_KD = 0.8
 
 
 # --------------------------------------------------------------------------- #
@@ -177,6 +177,7 @@ def main() -> None:
         kp=np.full(arm.num_joints, _KP),
         kd=np.full(arm.num_joints, _KD),
     )
+    arm.fresh()
     print(f"[MIT模式] OK（kp={_KP}, kd={_KD}）")
 
     try:

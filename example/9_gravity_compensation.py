@@ -114,6 +114,7 @@ def main() -> None:
         kp=np.full(arm.num_joints, 2.0),
         kd=np.full(arm.num_joints, 1.0),
     )
+    arm.fresh()
     print("[MIT模式] OK（kp=2, kd=1）")
 
     # 启动控制循环，频率使用配置默认值 (500 Hz)
