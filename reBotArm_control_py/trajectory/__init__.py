@@ -21,6 +21,7 @@ from .trajectory_planner import (
     plan_joint_space_trajectory,
     compute_traj_stats,
 )
+from .retiming import RetimeResult, retime_joint_trajectory, tracking_speed_scale
 
 __all__ = [
     # 采样器
@@ -39,4 +40,8 @@ __all__ = [
     "TrajStats",
     "plan_joint_space_trajectory",
     "compute_traj_stats",
+    # 同步时间参数化
+    "RetimeResult",
+    "retime_joint_trajectory",
+    "tracking_speed_scale",
 ]

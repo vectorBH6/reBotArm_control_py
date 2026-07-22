@@ -39,6 +39,7 @@ import numpy as np
 import yaml
 
 from motorbridge import Controller, Mode, CallError
+from ..timing import DeadlineFault, LoopTimingMonitor, LoopTimingSnapshot
 
 _CFG_DIR = Path(__file__).parent.parent.parent / "config"
 _GLOBAL_CFG = _CFG_DIR / "rebotarm.yaml"
@@ -471,6 +472,7 @@ class RebotArm:
         self._ctrl_fn: Optional[Callable] = None
         self._ctrl_rate: float = self._rate
         self._connected: bool = False
+        self._control_timing = LoopTimingMonitor(1.0 / self._ctrl_rate)
 
         self._build_groups()
 
@@ -711,6 +713,10 @@ class RebotArm:
             raise RuntimeError("控制循环已在运行，请先调用 stop_control_loop()")
         self._running = True
         self._ctrl_rate = rate if rate is not None else self._rate
+        self._control_timing.configure(
+            nominal_period_sec=1.0 / self._ctrl_rate,
+        )
+        self._control_timing.reset_runtime()
         self._ctrl_fn = control_fn
         self._ctrl_thread = threading.Thread(
             target=self._control_loop_impl,
@@ -729,14 +735,39 @@ class RebotArm:
                 if self._running:
                     raise
             elapsed = time.perf_counter() - t0
+            self._control_timing.observe_cycle(t0, elapsed)
             sleep_time = dt - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
+    def configure_control_loop_watchdog(
+        self,
+        *,
+        deadline_sec: float,
+        violation_limit: int,
+        on_fault: Optional[Callable[[DeadlineFault], None]],
+    ) -> None:
+        """Configure deadline detection without changing the control rate."""
+        self._control_timing.configure(
+            deadline_sec=deadline_sec,
+            violation_limit=violation_limit,
+            on_fault=on_fault,
+        )
+
+    def control_loop_timing_snapshot(self) -> LoopTimingSnapshot:
+        return self._control_timing.snapshot()
+
+    def reset_control_loop_timing_runtime(self) -> None:
+        self._control_timing.reset_runtime()
+
     def stop_control_loop(self) -> None:
         self._running = False
         t = getattr(self, "_ctrl_thread", None)
-        if t is not None and t.is_alive():
+        if (
+            t is not None
+            and t.is_alive()
+            and t is not threading.current_thread()
+        ):
             t.join(timeout=5.0)
 
     # ── 上下文管理器 ───────────────────────────────────────────────────────

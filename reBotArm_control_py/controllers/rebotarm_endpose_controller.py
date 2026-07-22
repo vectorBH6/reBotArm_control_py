@@ -68,6 +68,8 @@ from ..trajectory import (
     TrajPlanParams,
     IKParams as ClikIKParams,
     plan_cartesian_geodesic_trajectory,
+    retime_joint_trajectory,
+    tracking_speed_scale,
     track_trajectory,
 )
 from ..actuator import RebotArm
@@ -115,12 +117,26 @@ class RebotArmEndPose:
         self._running = False
 
         self._traj: list[np.ndarray] = []
+        self._traj_times: np.ndarray = np.empty(0, dtype=np.float64)
+        self._traj_velocities: list[np.ndarray] = []
+        self._planned_duration: float = 0.0
+        self._retime_scale: float = 1.0
+        self._limiting_joint: int | None = None
         self._moving = False
         self._send_thread: Optional[threading.Thread] = None
         self._stop_send = threading.Event()
 
         self._home_vel: float = 0.5
         self._vlim_override: Optional[np.ndarray] = None
+        self._trajectory_max_velocities = np.array(
+            self._arm_group._pv_vlim, dtype=np.float64, copy=True
+        )
+        self._trajectory_max_accelerations = self._trajectory_max_velocities.copy()
+        self._trajectory_safety_factor = 1.0
+        self._tracking_error_soft = 0.05
+        self._tracking_error_hard = 0.15
+        self._online_speed_scale = 1.0
+        self._motion_error: str | None = None
 
     # ── 生命周期 ───────────────────────────────────────────────────────────
 
@@ -158,6 +174,34 @@ class RebotArmEndPose:
 
     def set_gripper_target(self, pos: float) -> None:
         self._gripper_target = float(pos)
+
+    def set_trajectory_limits(
+        self,
+        max_velocities,
+        max_accelerations,
+        safety_factor: float = 1.0,
+        tracking_error_soft: float = 0.05,
+        tracking_error_hard: float = 0.15,
+    ) -> None:
+        """Configure limits used by the synchronized trajectory retimer."""
+
+        vmax = np.asarray(max_velocities, dtype=np.float64).reshape(-1)
+        amax = np.asarray(max_accelerations, dtype=np.float64).reshape(-1)
+        if vmax.size != self._n or amax.size != self._n:
+            raise ValueError("trajectory limits must match arm joint count")
+        if np.any(~np.isfinite(vmax)) or np.any(vmax <= 0.0):
+            raise ValueError("max velocities must be finite and positive")
+        if np.any(~np.isfinite(amax)) or np.any(amax <= 0.0):
+            raise ValueError("max accelerations must be finite and positive")
+        if not np.isfinite(safety_factor) or not 0.0 < safety_factor <= 1.0:
+            raise ValueError("safety_factor must be in (0, 1]")
+        if tracking_error_soft < 0.0 or tracking_error_hard <= tracking_error_soft:
+            raise ValueError("tracking thresholds must satisfy 0 <= soft < hard")
+        self._trajectory_max_velocities = vmax.copy()
+        self._trajectory_max_accelerations = amax.copy()
+        self._trajectory_safety_factor = float(safety_factor)
+        self._tracking_error_soft = float(tracking_error_soft)
+        self._tracking_error_hard = float(tracking_error_hard)
 
     def open_gripper(self) -> None:
         if self._has_gripper:
@@ -236,6 +280,25 @@ class RebotArmEndPose:
         if not self._running:
             return False
 
+        success, target = self.solve_ik(
+            x, y, z, roll=roll, pitch=pitch, yaw=yaw
+        )
+        if not success:
+            return False
+        self._q_target = target.copy()
+        return True
+
+    def solve_ik(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        roll: float = 0.0,
+        pitch: float = 0.0,
+        yaw: float = 0.0,
+    ) -> tuple[bool, np.ndarray]:
+        """Solve an end-pose target without changing any control target."""
+
         q_curr, _, _ = self.rebotarm.get_state()
         q_curr = pad_q_for_model(self._model, q_curr, self._n)
         T_target = pos_rot_to_se3(
@@ -249,10 +312,9 @@ class RebotArmEndPose:
         )
         if not result.success:
             print(f"[RebotArmEndPose/IK] IK 未收敛  err={result.error:.3e}")
-            return False
+            return False, np.array([], dtype=np.float64)
 
-        self._q_target = result.q[:self._n].copy()
-        return True
+        return True, result.q[:self._n].copy()
 
     def move_to_traj(
         self,
@@ -306,17 +368,56 @@ class RebotArmEndPose:
             print("[RebotArmEndPose/Traj] 轨迹为空")
             return False
 
+        failed_points = [index for index, pt in enumerate(joint_traj) if not pt.ik_success]
+        if failed_points:
+            print(
+                "[RebotArmEndPose/Traj] CLIK 未收敛 "
+                f"points={failed_points[:8]} total={len(failed_points)}"
+            )
+            return False
+
         pts = [pt.q[: self._n].copy() for pt in joint_traj]
+        nominal_times = [float(pt.time) for pt in joint_traj]
+        retimed = retime_joint_trajectory(
+            pts,
+            nominal_times,
+            self._trajectory_max_velocities,
+            self._trajectory_max_accelerations,
+            safety_factor=self._trajectory_safety_factor,
+        )
+        if retimed.scale_factor > 1.0 + 1e-6:
+            joint_label = (
+                f"joint{retimed.limiting_joint + 1}"
+                if retimed.limiting_joint is not None
+                else "unknown"
+            )
+            print(
+                "[RebotArmEndPose/Traj] retiming sincronizado "
+                f"scale={retimed.scale_factor:.3f} "
+                f"limit={joint_label}/{retimed.limiting_quantity} "
+                f"duration={retimed.duration:.3f}s"
+            )
 
         self._stop_send.set()
         if self._send_thread is not None:
             self._send_thread.join(timeout=5.0)
 
         self._traj = pts
+        self._traj_times = retimed.times.copy()
+        self._traj_velocities = [
+            velocity.copy() for velocity in retimed.velocities
+        ]
+        self._planned_duration = retimed.duration
+        self._retime_scale = retimed.scale_factor
+        self._limiting_joint = retimed.limiting_joint
+        self._motion_error = None
+        # Keep actuator vlim above the retimed command ceiling by the configured
+        # margin, but below the driver's much higher emergency ceiling.
+        self._vlim_override = self._trajectory_max_velocities.copy()
         self._moving = True
         self._stop_send.clear()
         self._send_thread = threading.Thread(
-            target=self._send_loop, args=(duration,), daemon=True,
+            target=self._send_loop, daemon=True,
         )
         self._send_thread.start()
         return True
@@ -357,12 +458,66 @@ class RebotArmEndPose:
 
     # ── 轨迹发送线程 ──────────────────────────────────────────────────────
 
-    def _send_loop(self, duration: float) -> None:
-        n = len(self._traj)
-        interval = duration / n if n > 0 else self._dt
-        for i in range(n):
-            if self._stop_send.is_set():
-                return
-            self._q_target[:] = self._traj[i]
-            time.sleep(interval)
-        self._moving = False
+    def _send_loop(self) -> None:
+        if not self._traj or self._traj_times.size == 0:
+            self._moving = False
+            return
+        virtual_time = 0.0
+        last_update = time.monotonic()
+        self._q_target[:] = self._traj[0]
+        self._qd_target[:] = 0.0
+        try:
+            while not self._stop_send.is_set():
+                now = time.monotonic()
+                elapsed = max(0.0, now - last_update)
+                last_update = now
+                actual = self._arm_group.get_positions(request_feedback=False)
+                self._online_speed_scale = tracking_speed_scale(
+                    self._q_target,
+                    np.asarray(actual, dtype=np.float64)[: self._n],
+                    self._tracking_error_soft,
+                    self._tracking_error_hard,
+                )
+                virtual_time = min(
+                    self._planned_duration,
+                    virtual_time + elapsed * self._online_speed_scale,
+                )
+                index = int(np.searchsorted(
+                    self._traj_times, virtual_time, side="right"
+                ))
+                if index <= 0:
+                    target = self._traj[0]
+                    velocity = np.zeros(self._n)
+                elif index >= len(self._traj):
+                    target = self._traj[-1]
+                    velocity = np.zeros(self._n)
+                else:
+                    t0 = float(self._traj_times[index - 1])
+                    t1 = float(self._traj_times[index])
+                    ratio = (virtual_time - t0) / max(t1 - t0, 1e-9)
+                    q0 = self._traj[index - 1]
+                    q1 = self._traj[index]
+                    target = q0 + (q1 - q0) * ratio
+                    velocity = (
+                        (q1 - q0) / max(t1 - t0, 1e-9)
+                    ) * self._online_speed_scale
+                self._q_target[:] = target
+                self._qd_target[:] = velocity
+
+                if virtual_time >= self._planned_duration:
+                    final_error = float(np.max(np.abs(
+                        np.asarray(actual, dtype=np.float64)[: self._n]
+                        - self._traj[-1]
+                    )))
+                    if final_error <= self._tracking_error_soft:
+                        return
+                if self._stop_send.wait(self._dt):
+                    return
+        except Exception as exc:
+            self._motion_error = f"trajectory execution failed: {exc}"
+            print(f"[RebotArmEndPose/Traj] {self._motion_error}")
+        finally:
+            self._qd_target[:] = 0.0
+            self._online_speed_scale = 1.0
+            self._vlim_override = None
+            self._moving = False
